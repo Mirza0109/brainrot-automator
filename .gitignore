@@ -1,0 +1,43 @@
+# Sensitive files
+client_secret*.json
+*.env
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+venv/
+.venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo 
+
+# Videos and audio/subtitles
+videos/
+*.mp4
+*.srt
+*.mp3
+*.txt
+*.json
+audio_and_subtitles/
