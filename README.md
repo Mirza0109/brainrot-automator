@@ -3,6 +3,8 @@ layout: default
 title: Project README
 ---
 
+<a href="https://spiffy-mousse-25906f.netlify.app/netlify/functions/login">Login with TikTok</a>
+
 # Auto Upload CLI for TikTok & YouTube Shorts with AI Story Generation & Voiceover
 
 A command-line Python tool that:
