@@ -100,7 +100,7 @@ The script will generate story scripts, voiceovers, subtitles, videos, and then 
 
 TikTok's OAuth flow requires a publicly accessible HTTPS Redirect URI to receive the authorization `code`. Simply hosting your code in a public Git repository does **not** provide this endpoint—you’ll still need one of the following:
 
-1. **Local Server + ngrok**
+**Local Server + ngrok**
 
    * Run a small Flask (or similar) app on your machine (e.g., on port 8090) to handle `/oauth/callback`.
    * Expose it via ngrok:
@@ -109,19 +109,6 @@ TikTok's OAuth flow requires a publicly accessible HTTPS Redirect URI to receive
      ngrok http 8090
      ```
    * Add the generated `https://<your_id>.ngrok.io/oauth/callback` URL as your Redirect URI in the TikTok Developer Portal.
-
-2. **Serverless Function**
-
-   * Deploy the same callback logic (Flask, Node.js, etc.) as a function on Vercel, Netlify, or Cloudflare Workers.
-   * Use the provided HTTPS URL (e.g. `https://my-app.vercel.app/api/callback`) as the Redirect URI.
-
-3. **Static Page + Client‑Side JS**
-
-   * Host an HTML page (e.g. on GitHub Pages) at your Redirect URI URL.
-   * Add a small script that reads `window.location.search`, extracts `code`, and displays or logs it so you can copy it for the token exchange.
-   * This approach avoids running a server but requires manual copy/paste of the `code`.
-
-Choose the method that best fits your workflow. Once TikTok redirects back with the `code`, you'll exchange it for your `TIKTOK_ACCESS_TOKEN`, which the script uses to publish videos.
 
 ---
 
