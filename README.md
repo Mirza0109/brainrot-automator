@@ -1,3 +1,8 @@
+---
+layout: default
+title: Project README
+---
+
 # Auto Upload CLI for TikTok & YouTube Shorts with AI Story Generation & Voiceover
 
 A command-line Python tool that:
