@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en-US">
+  <head>
+    <meta charset="UTF-8">
+
+<!-- Begin Jekyll SEO tag v2.8.0 -->
+<title>Project README | Brainrot automator</title>
+<meta name="generator" content="Jekyll v4.2.2" />
+<meta property="og:title" content="Project README" />
+<meta property="og:locale" content="en_US" />
+<meta name="description" content="Brainrot generation and uploading automator" />
+<meta property="og:description" content="Brainrot generation and uploading automator" />
+<meta property="og:site_name" content="Brainrot automator" />
+<meta property="og:type" content="website" />
+<meta name="twitter:card" content="summary" />
+<meta property="twitter:title" content="Project README" />
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"WebPage","description":"Brainrot generation and uploading automator","headline":"Project README","url":"/README.html"}</script>
+<!-- End Jekyll SEO tag -->
+
+    <link rel="preconnect" href="https://fonts.gstatic.com">
+    <link rel="preload" href="https://fonts.googleapis.com/css?family=Open+Sans:400,700&display=swap" as="style" type="text/css" crossorigin>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#157878">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="stylesheet" href="/assets/css/style.css?v=">
+    <!-- start custom head snippets, customize with your own _includes/head-custom.html file -->
+
+<!-- Setup Google Analytics -->
+
+
+
+<!-- You can set your favicon here -->
+<!-- link rel="shortcut icon" type="image/x-icon" href="/favicon.ico" -->
+
+<!-- end custom head snippets -->
+
+  </head>
+  <body>
+    <a id="skip-to-content" href="#content">Skip to the content.</a>
+
+    <header class="page-header" role="banner">
+      <h1 class="project-name">Project README</h1>
+      <h2 class="project-tagline">Brainrot generation and uploading automator</h2>
+      
+      
+    </header>
+
+    <main id="content" class="main-content" role="main">
+      <h1 id="auto-upload-cli-for-tiktok--youtube-shorts-with-ai-story-generation--voiceover">Auto Upload CLI for TikTok &amp; YouTube Shorts with AI Story Generation &amp; Voiceover</h1>
+
+<p>A command-line Python tool that:</p>
+
+<ol>
+  <li><strong>Generates</strong> multi-part suspenseful stories via OpenAI</li>
+  <li><strong>Converts</strong> those scripts to voiceovers using ElevenLabs TTS</li>
+  <li><strong>Creates</strong> subtitle files and overlays them on background videos via FFmpeg</li>
+  <li><strong>Automatically uploads</strong> the finished videos to TikTok and/or YouTube Shorts</li>
+</ol>
+
+<p>This end-to-end pipeline enables you to go from idea to published content with a single script.</p>
+
+<hr />
+
+<h2 id="-description">🔍 Description</h2>
+
+<p><code class="language-plaintext highlighter-rouge">auto_upload.py</code> orchestrates the full content creation process:</p>
+
+<ol>
+  <li><strong>Story generation</strong>: calls OpenAI to produce 2–4 part narratives, each ~20–30s long, with cliffhangers.</li>
+  <li><strong>Voiceover</strong>: uses ElevenLabs to generate high-quality MP3 narrations for each part.</li>
+  <li><strong>Subtitles</strong>: transcribes the TTS output (via Whisper), re-chunks into timed segments, and writes SRT files.</li>
+  <li><strong>Video composition</strong>: overlays subtitles on a random background clip using FFmpeg, syncing with the audio.</li>
+  <li><strong>Publishing</strong>: uploads the final MP4s to TikTok and/or YouTube Shorts with metadata from a JSON file.</li>
+</ol>
+
+<hr />
+
+<h2 id="️-features">⚙️ Features</h2>
+
+<ul>
+  <li><strong>AI Story Generation</strong>: automatically crafts tense, cliffhanger-driven story scripts.</li>
+  <li><strong>Voiceover &amp; Subtitles</strong>: integrates ElevenLabs TTS and Whisper for narration plus accurate subtitles.</li>
+  <li><strong>Multi-platform Upload</strong>: CLI supports TikTok, YouTube Shorts, or both in one run.</li>
+  <li><strong>Part-aware metadata</strong>: filenames extract <code class="language-plaintext highlighter-rouge">part</code> numbers to match JSON entries for captions/tags.</li>
+  <li><strong>End-to-end automation</strong>: from script to published video, schedulable via cron, GitHub Actions, etc.</li>
+</ul>
+
+<hr />
+
+<h2 id="-prerequisites">🛠 Prerequisites</h2>
+
+<ul>
+  <li><strong>Python 3.7+</strong></li>
+  <li><strong>FFmpeg</strong> installed and on your PATH</li>
+  <li>
+    <p><strong>Dependencies</strong> (install via pip):</p>
+
+    <div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>pip <span class="nb">install </span>openai python-dotenv elevenlabs requests google-auth-oauthlib google-api-python-client whisper
+</code></pre></div>    </div>
+  </li>
+  <li>
+    <p><strong>Environment variables</strong> in a <code class="language-plaintext highlighter-rouge">.env</code> file or exported:</p>
+
+    <ul>
+      <li><code class="language-plaintext highlighter-rouge">OPENAI_API_KEY</code> – your OpenAI API key</li>
+      <li><code class="language-plaintext highlighter-rouge">ELEVENLABS_API_KEY</code> – your ElevenLabs API key</li>
+      <li><code class="language-plaintext highlighter-rouge">TIKTOK_ACCESS_TOKEN</code> – TikTok OAuth2 token (valid 24h)</li>
+      <li><code class="language-plaintext highlighter-rouge">YOUTUBE_CLIENT_SECRETS_FILE</code> – path to client_secrets.json for YouTube OAuth</li>
+    </ul>
+  </li>
+</ul>
+
+<hr />
+
+<h2 id="️-installation">⚡️ Installation</h2>
+
+<ol>
+  <li>
+    <p><strong>Clone the repo</strong></p>
+
+    <div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>git clone https://github.com/yourusername/auto-upload.git
+<span class="nb">cd </span>auto-upload
+</code></pre></div>    </div>
+  </li>
+  <li>
+    <p><strong>Install FFmpeg</strong> (if not already):</p>
+
+    <ul>
+      <li>macOS: <code class="language-plaintext highlighter-rouge">brew install ffmpeg</code></li>
+      <li>Ubuntu: <code class="language-plaintext highlighter-rouge">sudo apt install ffmpeg</code></li>
+    </ul>
+  </li>
+  <li>
+    <p><strong>Install Python deps</strong></p>
+
+    <div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>pip <span class="nb">install </span>openai python-dotenv elevenlabs requests google-auth-oauthlib google-api-python-client whisper
+</code></pre></div>    </div>
+  </li>
+  <li>
+    <p><strong>Create a <code class="language-plaintext highlighter-rouge">.env</code> file</strong> in the project root:</p>
+
+    <pre><code class="language-dotenv">OPENAI_API_KEY=sk-...
+ELEVENLABS_API_KEY=eleven-...
+TIKTOK_ACCESS_TOKEN=...
+YOUTUBE_CLIENT_SECRETS_FILE=client_secrets.json
+</code></pre>
+  </li>
+</ol>
+
+<hr />
+
+<h2 id="-usage">🚀 Usage</h2>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>python auto_upload.py <span class="se">\</span>
+  <span class="nt">--video</span> /path/to/backgrounds/videoplayback.mp4 <span class="se">\</span>
+  <span class="nt">--meta</span> /path/to/stories.json <span class="se">\</span>
+  <span class="nt">--platform</span> both
+</code></pre></div></div>
+
+<ul>
+  <li><strong><code class="language-plaintext highlighter-rouge">--video</code></strong>: path to a background clip directory or single file (will randomize).</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">--meta</code></strong>: JSON file for upload metadata (captions, hashtags, tags).</li>
+  <li><strong><code class="language-plaintext highlighter-rouge">--platform</code></strong>: <code class="language-plaintext highlighter-rouge">tiktok</code>, <code class="language-plaintext highlighter-rouge">youtube</code>, or <code class="language-plaintext highlighter-rouge">both</code>.</li>
+</ul>
+
+<p>The script will generate story scripts, voiceovers, subtitles, videos, and then upload them, printing API responses.</p>
+
+<hr />
+
+<h2 id="-oauth-callback-endpoint">🔐 OAuth Callback Endpoint</h2>
+
+<p>TikTok’s OAuth flow requires a publicly accessible HTTPS Redirect URI to receive the authorization <code class="language-plaintext highlighter-rouge">code</code>. Simply hosting your code in a public Git repository does <strong>not</strong> provide this endpoint—you’ll still need one of the following:</p>
+
+<p><strong>Local Server + ngrok</strong></p>
+
+<ul>
+  <li>Run a small Flask (or similar) app on your machine (e.g., on port 8090) to handle <code class="language-plaintext highlighter-rouge">/oauth/callback</code>.</li>
+  <li>
+    <p>Expose it via ngrok:</p>
+
+    <div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>ngrok http 8090
+</code></pre></div>    </div>
+  </li>
+  <li>Add the generated <code class="language-plaintext highlighter-rouge">https://&lt;your_id&gt;.ngrok.io/oauth/callback</code> URL as your Redirect URI in the TikTok Developer Portal.</li>
+</ul>
+
+<hr />
+
+<h2 id="-scheduling">📅 Scheduling</h2>
+
+<p>Automate the entire pipeline via:</p>
+
+<ul>
+  <li><strong>cron (Linux/macOS)</strong>: e.g. <code class="language-plaintext highlighter-rouge">0 9 * * * python /path/auto_upload.py --…</code></li>
+  <li><strong>Windows Task Scheduler</strong></li>
+  <li><strong>GitHub Actions</strong>: use a <code class="language-plaintext highlighter-rouge">schedule</code> workflow for serverless runs on GitHub’s servers.</li>
+</ul>
+
+<hr />
+
+<h2 id="-license">📝 License</h2>
+
+<p>This project is licensed under the <a href="LICENSE">MIT License</a>.</p>
+
+<hr />
+
+<p><em>Ready to generate, voice, and publish? Let’s go!</em>, voice, and publish? Let’s go!*</p>
+
+
+      <footer class="site-footer">
+        
+        <span class="site-footer-credits">This page was generated by <a href="https://pages.github.com">GitHub Pages</a>.</span>
+      </footer>
+    </main>
+  </body>
+</html>
