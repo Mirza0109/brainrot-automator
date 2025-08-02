@@ -139,8 +139,6 @@ Automate the entire pipeline via:
 
 This project is licensed under the [MIT License](LICENSE).
 
-To apply a project license, include a `LICENSE` file in the repository root containing the full license text. For an MIT License, you can use the template from [https://opensource.org/licenses/MIT](https://opensource.org/licenses/MIT).
-
 ---
 
 *Ready to generate, voice, and publish? Let's go!*, voice, and publish? Let's go!\*
