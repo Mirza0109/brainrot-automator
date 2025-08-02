@@ -39,5 +39,6 @@ videos/
 *.srt
 *.mp3
 *.txt
+!/docs/tiktokLC98iYia3YRXUgd3fPMCHnrPhaRKVpFB.txt
 *.json
 audio_and_subtitles/

@@ -47,12 +47,12 @@ def fmt_ts(t: float) -> str:
     ms = int((t - int(t)) * 1000)
     return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
 
-# ─── 1) Generate 2–4 suspenseful story parts ───────────
+# ─── 1) Generate 2–3 suspenseful story parts ───────────
 PROMPT_GEN = """Generate a tense, 2–3 part story, each part should be 20-30 seconds of speech, designed to hook the listener immediately and end each part on a cliffhanger. Return exactly one JSON object:
 {"parts": [string, …]}
 
 Each part must:
-- Be 45–60 words (≈20 sec when read aloud)
+- Be 100–150 words (≈40 sec when read aloud)
 - Select one genre: horror, psychological thriller, dark sci-fi, or mystery
 - Open with a gripping first sentence hook
 - Present an unsettling scenario or high-stakes dilemma
@@ -202,12 +202,12 @@ Here are the scripts:
 """
 
 resp_meta = openai_client.chat.completions.create(
-    model="gpt-4",  # Changed from gpt-4o-mini to gpt-4
+    model="gpt-4",  
     messages=[{"role": "user", "content": metadata_prompt}]
 )
 metadata = json.loads(resp_meta.choices[0].message.content)
 
-# Save metadata for your automation pipeline
+# Save metadata for the automation pipeline
 meta_out = os.path.join(AUDIO_SUBTITLES_DIR, f"{base_name}_metadata.json")
 with open(meta_out, "w", encoding="utf-8") as mf:
     json.dump(metadata, mf, ensure_ascii=False, indent=2)
