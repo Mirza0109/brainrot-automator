@@ -96,6 +96,35 @@ The script will generate story scripts, voiceovers, subtitles, videos, and then 
 
 ---
 
+## 🔐 OAuth Callback Endpoint
+
+TikTok's OAuth flow requires a publicly accessible HTTPS Redirect URI to receive the authorization `code`. Simply hosting your code in a public Git repository does **not** provide this endpoint—you’ll still need one of the following:
+
+1. **Local Server + ngrok**
+
+   * Run a small Flask (or similar) app on your machine (e.g., on port 8090) to handle `/oauth/callback`.
+   * Expose it via ngrok:
+
+     ```bash
+     ngrok http 8090
+     ```
+   * Add the generated `https://<your_id>.ngrok.io/oauth/callback` URL as your Redirect URI in the TikTok Developer Portal.
+
+2. **Serverless Function**
+
+   * Deploy the same callback logic (Flask, Node.js, etc.) as a function on Vercel, Netlify, or Cloudflare Workers.
+   * Use the provided HTTPS URL (e.g. `https://my-app.vercel.app/api/callback`) as the Redirect URI.
+
+3. **Static Page + Client‑Side JS**
+
+   * Host an HTML page (e.g. on GitHub Pages) at your Redirect URI URL.
+   * Add a small script that reads `window.location.search`, extracts `code`, and displays or logs it so you can copy it for the token exchange.
+   * This approach avoids running a server but requires manual copy/paste of the `code`.
+
+Choose the method that best fits your workflow. Once TikTok redirects back with the `code`, you'll exchange it for your `TIKTOK_ACCESS_TOKEN`, which the script uses to publish videos.
+
+---
+
 ## 📅 Scheduling
 
 Automate the entire pipeline via:
@@ -108,8 +137,10 @@ Automate the entire pipeline via:
 
 ## 📝 License
 
-Released under the [MIT License](LICENSE).
+This project is licensed under the [MIT License](LICENSE).
+
+To apply a project license, include a `LICENSE` file in the repository root containing the full license text. For an MIT License, you can use the template from [https://opensource.org/licenses/MIT](https://opensource.org/licenses/MIT).
 
 ---
 
-*Ready to generate, voice, and publish? Let's go!*
+*Ready to generate, voice, and publish? Let's go!*, voice, and publish? Let's go!\*
