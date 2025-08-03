@@ -7,7 +7,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from openai import OpenAI
 from elevenlabs.client import ElevenLabs
-from upload_handlers import ensure_tiktok_auth, start_auto_refresh_thread, upload_tiktok, upload_youtube_short
+from upload_handlers import ensure_tiktok_auth, start_auto_refresher, upload_tiktok, upload_youtube_short
 
 load_dotenv()
 openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -176,7 +176,7 @@ def generate_metadata(parts: list):
 def main():
     # Ensure TikTok auth is ready
     ensure_tiktok_auth()
-    start_auto_refresh_thread()
+    start_auto_refresher()
 
     parts = generate_story_parts()
     print(parts)

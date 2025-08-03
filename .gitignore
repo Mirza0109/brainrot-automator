@@ -40,6 +40,7 @@ videos/
 *.mp3
 *.txt
 !/docs/tiktokBSDZqD4bSmwkvLJNzloyfcFALLh9SWuO.txt
+!tiktokMXxvKBhXj9alVX81uDiktDkw6JAdNrl8.txt
 *.json
 audio_and_subtitles/
 
