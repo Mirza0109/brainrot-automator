@@ -47,3 +47,5 @@ audio_and_subtitles/
 !package.json
 
 _site/
+# Local Netlify folder
+.netlify
