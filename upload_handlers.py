@@ -2,96 +2,166 @@ import os
 import re
 import json
 import requests
+import time
+import threading
+import webbrowser
 from pathlib import Path
+from dotenv import load_dotenv
+
+# Load environment variables from .env
+load_dotenv()
+
+# ─── Token persistence ─────────────────────────────────────────────────────────
+TOKEN_STORE = Path.home() / '.tiktok_token.json'
+CLIENT_KEY  = os.getenv('TIKTOK_CLIENT_KEY')
+
+# Load stored tokens or environment
+if TOKEN_STORE.exists():
+    data = json.loads(TOKEN_STORE.read_text())
+    access_token  = data.get('access_token')
+    refresh_token = data.get('refresh_token')
+    expires_at    = data.get('expires_at', 0)
+else:
+    access_token  = os.getenv('TIKTOK_ACCESS_TOKEN')
+    refresh_token = os.getenv('TIKTOK_REFRESH_TOKEN')
+    expires_at    = int(os.getenv('TIKTOK_EXPIRES_AT', 0))
+
+TIKTOK_API_BASE = 'https://open.tiktokapis.com'
+REFRESH_URL     = f"{TIKTOK_API_BASE}/v2/oauth/refresh_token/"
+LOGIN_URL       = os.getenv('TIKTOK_LOGIN_URL', 'https://<your-site>/.netlify/functions/login')
+
+# ─── Authentication Helper ─────────────────────────────────────────────────────
+def ensure_tiktok_auth():
+    """
+    Ensure we have a valid TikTok access token: refresh if expired, otherwise trigger manual auth.
+    """
+    global access_token, refresh_token, expires_at
+    now = time.time()
+    # If no token or expired
+    if not access_token or now >= expires_at:
+        if refresh_token and CLIENT_KEY:
+            print("Refreshing TikTok access token...")
+            refresh_access_token()
+        else:
+            print(f"Opening browser for authentication: {LOGIN_URL}")
+            import selenium
+            from selenium import webdriver
+            from selenium.webdriver.common.by import By
+            from selenium.webdriver.support.ui import WebDriverWait
+            from selenium.webdriver.support import expected_conditions as EC
+            
+            # Open browser and wait for auth
+            driver = webdriver.Chrome()  # Make sure you have Chrome and chromedriver installed
+            try:
+                driver.get(LOGIN_URL)
+                # Wait for successful auth (title will be set to TIKTOK_AUTH_SUCCESS)
+                WebDriverWait(driver, 300).until(
+                    EC.title_is("TIKTOK_AUTH_SUCCESS")
+                )
+                # Get tokens from the page
+                tokens_elem = driver.find_element(By.ID, "tokens")
+                tokens_data = json.loads(tokens_elem.get_attribute("textContent").strip())
+                
+                # Save tokens
+                access_token = tokens_data['access_token']
+                refresh_token = tokens_data['refresh_token']
+                expires_at = tokens_data['expires_at']
+                save_tokens()
+                print("TikTok authentication complete.")
+            finally:
+                driver.quit()
+
+# ─── Auto-refresh thread ────────────────────────────────────────────────────────
+def save_tokens():
+    TOKEN_STORE.write_text(json.dumps({
+        'access_token':  access_token,
+        'refresh_token': refresh_token,
+        'expires_at':    expires_at
+    }))
+
+def refresh_access_token():
+    global access_token, refresh_token, expires_at
+    resp = requests.post(
+        REFRESH_URL,
+        data={
+            'client_key':    CLIENT_KEY,
+            'refresh_token': refresh_token
+        },
+        headers={'Content-Type': 'application/x-www-form-urlencoded'}
+    )
+    resp.raise_for_status()
+    data = resp.json()['data']
+    access_token  = data['access_token']
+    refresh_token = data['refresh_token']
+    expires_at    = int(time.time()) + data['expires_in']
+    save_tokens()
+    print(f"[TikTok] Token refreshed; expires at {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(expires_at))}")
+
+def _auto_refresher():
+    while True:
+        wait = expires_at - time.time() - 60
+        if wait > 0:
+            time.sleep(wait)
+        try:
+            refresh_access_token()
+        except Exception as e:
+            print(f"Failed to refresh TikTok token: {e}")
+            time.sleep(60)
+
+def start_auto_refresh_thread():
+    if refresh_token and CLIENT_KEY:
+        t = threading.Thread(target=_auto_refresher, daemon=True)
+        t.start()
 
 # ─── YouTube Shorts ────────────────────────────────────────────────────────────
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
-# ─── Configuration ─────────────────────────────────────────────────────────────
-# Get the directory where this script is located
+# ─── YouTube Configuration ─────────────────────────────────────────────────────
 SCRIPT_DIR = Path(__file__).parent.absolute()
-
-# Get client secrets filename from env var, default to the standard name if not set
-YOUTUBE_CLIENT_SECRETS_FILE = os.path.join(
-    SCRIPT_DIR,
-    os.getenv('YOUTUBE_CLIENT_SECRETS_FILE', 'client_secret_782352390431-j1d1tq1ks5b34r86rin3l4738nckfpia.apps.googleusercontent.com.json')
-)
-
-if not os.path.exists(YOUTUBE_CLIENT_SECRETS_FILE):
-    raise FileNotFoundError(f"YouTube client secrets file not found at: {YOUTUBE_CLIENT_SECRETS_FILE}")
-
+YOUTUBE_CLIENT_SECRETS_FILE = os.getenv('YOUTUBE_CLIENT_SECRETS_FILE', SCRIPT_DIR / 'client_secret.json')
 YOUTUBE_SCOPES = [
     'https://www.googleapis.com/auth/youtube.upload',
     'https://www.googleapis.com/auth/youtube.readonly'
 ]
 YOUTUBE_API_SERVICE = ('youtube', 'v3')
-TIKTOK_API_BASE = 'https://open.tiktokapis.com'
-TIKTOK_ACCESS_TOKEN = os.getenv('TIKTOK_ACCESS_TOKEN')
 
 
 def _get_youtube_client():
-    flow = InstalledAppFlow.from_client_secrets_file(
-        YOUTUBE_CLIENT_SECRETS_FILE, YOUTUBE_SCOPES
-    )
+    flow = InstalledAppFlow.from_client_secrets_file(str(YOUTUBE_CLIENT_SECRETS_FILE), YOUTUBE_SCOPES)
     creds = flow.run_local_server(port=0)
     youtube = build(YOUTUBE_API_SERVICE[0], YOUTUBE_API_SERVICE[1], credentials=creds)
-    
-    # Get and print channel info
-    channel_response = youtube.channels().list(
-        part='snippet',
-        mine=True
-    ).execute()
-    
-    if channel_response['items']:
-        channel = channel_response['items'][0]['snippet']
-        print(f"Connected to YouTube channel: {channel['title']} ({channel['customUrl'] if 'customUrl' in channel else 'no custom URL'})")
-    
+    channel = youtube.channels().list(part='snippet', mine=True).execute().get('items', [])
+    if channel:
+        info = channel[0]['snippet']
+        print(f"Connected to YouTube channel: {info['title']}")
     return youtube
+
 
 def check_youtube_channel():
     youtube = _get_youtube_client()
-    channel_response = youtube.channels().list(
-        part='snippet',
-        mine=True
-    ).execute()
-    print(channel_response)
-    return channel_response['items'][0]['snippet']
+    resp = youtube.channels().list(part='snippet', mine=True).execute()
+    print(resp)
+    return resp['items'][0]['snippet']
+
 
 def upload_youtube_short(video_path: str, json_path: str):
-    """
-    Uploads a ≤60s video as a YouTube Short using metadata in json_path.
-    """
     fname = os.path.basename(video_path)
-    m = re.search(r'(\d+)', fname)
-    if not m:
-        raise ValueError(f"Cannot extract part number from '{fname}'")
-    part = int(m.group(1))
-
-    with open(json_path, 'r') as f:
+    part = int(re.search(r'(\d+)', fname).group(1))
+    with open(json_path) as f:
         data = json.load(f)
     entry = next((v for v in data['videos'] if v.get('part') == part), None)
     if not entry or 'youtube_shorts' not in entry:
-        raise KeyError(f"No YouTube Shorts metadata for part {part}")
-
+        raise KeyError(f"No YouTube metadata for part {part}")
     meta = entry['youtube_shorts']
     youtube = _get_youtube_client()
-
     body = {
-        'snippet': {
-            'title':       meta['title'],
-            'description': meta['description'],
-            'tags':        meta.get('tags', []),
-            'categoryId':  '22'
-        },
-        'status': {
-            'privacyStatus': 'public'
-        }
+        'snippet': { 'title': meta['title'], 'description': meta['description'], 'tags': meta.get('tags', []), 'categoryId': '22' },
+        'status': { 'privacyStatus': 'public' }
     }
     media = MediaFileUpload(video_path, chunksize=-1, resumable=True)
     req = youtube.videos().insert(part=','.join(body.keys()), body=body, media_body=media)
-
     print("Uploading to YouTube…")
     resp = None
     while resp is None:
@@ -103,64 +173,42 @@ def upload_youtube_short(video_path: str, json_path: str):
 
 
 def upload_tiktok(video_path: str, json_path: str):
-    """
-    Uploads a TikTok video via the Content Posting API.
-    """
-    if not TIKTOK_ACCESS_TOKEN:
-        raise EnvironmentError("Set TIKTOK_ACCESS_TOKEN")
-
-    fname = os.path.basename(video_path)
-    m = re.search(r'(\d+)', fname)
-    if not m:
-        raise ValueError(f"Cannot extract part number from '{fname}'")
-    part = int(m.group(1))
-
-    with open(json_path, 'r') as f:
+    # Ensure we have a valid TikTok token
+    ensure_tiktok_auth()
+    part = int(re.search(r'(\d+)', os.path.basename(video_path)).group(1))
+    with open(json_path) as f:
         data = json.load(f)
     entry = next((v for v in data['videos'] if v.get('part') == part), None)
     if not entry or 'tiktok' not in entry:
         raise KeyError(f"No TikTok metadata for part {part}")
-
     tk = entry['tiktok']
     caption = tk['caption'] + ' ' + ' '.join(tk.get('hashtags', []))
-
-    # 1) Initialize upload
-    init = requests.post(
-        f"{TIKTOK_API_BASE}/v1/media/upload/init/",
-        headers={'Authorization': f'Bearer {TIKTOK_ACCESS_TOKEN}'},
-        json={
-            'upload_name': os.path.basename(video_path),
-            'upload_method': 'POST'
-        }
-    ).json()
-    upload_id  = init['data']['upload_id']
-    upload_url = init['data']['upload_url']
-
-    # 2) Transfer the file
+    size = os.path.getsize(video_path)
+    init = requests.post(f"{TIKTOK_API_BASE}/v2/post/publish/video/init/",
+                         headers={'Authorization': f'Bearer {access_token}', 'Content-Type': 'application/json'},
+                         json={'post_info': {'title': caption, 'privacy_level': 'PUBLIC_TO_EVERYONE'},
+                               'source_info': {'source': 'FILE_UPLOAD', 'video_size': size, 'chunk_size': size, 'total_chunk_count': 1}})
+    init.raise_for_status()
+    data = init.json()['data']
+    publish_id, upload_url = data['publish_id'], data['upload_url']
     with open(video_path, 'rb') as fp:
-        files = {'file': fp}
-        r = requests.post(upload_url, files=files)
-        r.raise_for_status()
-
-    # 3) Publish
-    pub = requests.post(
-        f"{TIKTOK_API_BASE}/v1/media/publish/",
-        headers={'Authorization': f'Bearer {TIKTOK_ACCESS_TOKEN}'},
-        json={'upload_id': upload_id, 'caption': caption}
-    ).json()
-
-    print("TikTok response:", pub)
-    return pub
+        chunk = fp.read()
+    put = requests.put(upload_url, headers={'Content-Type': 'video/mp4', 'Content-Range': f'bytes 0-{len(chunk)-1}/{len(chunk)}'}, data=chunk)
+    put.raise_for_status()
+    status = requests.get(f"{TIKTOK_API_BASE}/v2/post/publish/get_status/", headers={'Authorization': f'Bearer {access_token}'}, params={'publish_id': publish_id})
+    status.raise_for_status()
+    print(f"TikTok publish status: {status.json()['data']}")
+    return status.json()['data']
 
 
 if __name__ == '__main__':
+    # Ensure authentication and start refresher
+    ensure_tiktok_auth()
+    start_auto_refresh_thread()
+
     JSON = '/path/to/stories.json'
-    VID = '/path/to/video_part1.mp4'
+    VID  = '/path/to/video_part1.mp4'
 
     check_youtube_channel()
-
-    # Upload to YouTube Shorts
-    #upload_youtube_short(VID, JSON)
-
-    # Upload to TikTok
-    #upload_tiktok(VID, JSON)
+    # upload_youtube_short(VID, JSON)
+    # upload_tiktok(VID, JSON)

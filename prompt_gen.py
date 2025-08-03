@@ -1,214 +1,214 @@
+import os
 import uuid
 import json
-import os
-import subprocess
 import random
+import subprocess
+from pathlib import Path
 from dotenv import load_dotenv
 from openai import OpenAI
 from elevenlabs.client import ElevenLabs
+from upload_handlers import ensure_tiktok_auth, start_auto_refresh_thread, upload_tiktok, upload_youtube_short
 
-# ─── Load environment variables ────────────────────────
-load_dotenv()  # expects .env with OPENAI_API_KEY & ELEVENLABS_API_KEY
-
-# ─── Clients ───────────────────────────────────────────
+load_dotenv()
 openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 eleven_client = ElevenLabs(api_key=os.getenv("ELEVENLABS_API_KEY"))
 
-# ─── Configuration ────────────────────────────────────
-BACKGROUND_VIDEOS = [
-    "videoplayback.mp4",
-    # add more as needed
-]
-FONT_NAME    = "Arial"
-FONT_SIZE    = 20      # subtitle font size
-MARGIN_V     = 50      # distance from bottom
-MAX_WORDS    = 5       # max words per subtitle chunk
+# Configuration
+BACKGROUND_VIDEOS = ["videoplayback.mp4"]
+FONT_NAME = "Arial"
+FONT_SIZE = 20
+MARGIN_V = 50
+MAX_WORDS = 5
+AUDIO_SUBDIR = Path("audio_and_subtitles")
+VIDEO_SUBDIR = Path("videos")
+AUDIO_SUBDIR.mkdir(exist_ok=True)
+VIDEO_SUBDIR.mkdir(exist_ok=True)
 
-# ─── Directory paths ────────────────────────────────────
-AUDIO_SUBTITLES_DIR = "audio_and_subtitles"
-VIDEOS_DIR = "videos"
-os.makedirs(AUDIO_SUBTITLES_DIR, exist_ok=True)
-os.makedirs(VIDEOS_DIR, exist_ok=True)
+# 1) Prompt definitions
+def generate_story_parts(model="gpt-4"):
+    prompt = (
+        """
+            Create an irresistibly addictive micro-epic that grabs readers by the throat and refuses to let go. Set your tale in the blood-soaked world of ancient myth—Rome's marble halls, Viking longships cutting through storm-dark seas, or beneath the shadow of Greek temples where gods walk among mortals.
 
-# ─── Helper functions ──────────────────────────────────
-def probe_duration(path: str) -> float:
+            STRUCTURE: Craft exactly 3 parts, each designed to be consumed in 30-40 seconds when read aloud (roughly 75-100 words per part).
+
+            ADDICTION FORMULA:
+            • Part 1: PERSONAL TERROR + INSTANT CONNECTION - Open with visceral, life-threatening danger using second person ("you") so readers feel the blade at their throat. But immediately ground them with essential context: who you are, why this matters, what you're fighting for. The terror is personal because the reader understands the stakes—your family, your honor, your sacred oath. Fear AND emotional investment within the first 30 seconds.
+
+            • Part 2: BETRAYAL THAT CUTS DEEP + DIVINE ESCALATION - Reveal who betrayed you and why it destroys everything you believed in. Make the betrayal personal—your brother, your mentor, your beloved. The gods intervene not randomly, but because of YOUR choices, YOUR bloodline, YOUR broken promises. Readers must feel the betrayal as their own wound.
+
+            • Part 3: YOUR IMPOSSIBLE CHOICE + CLIFFHANGER - Force a soul-crushing decision that readers feel in their bones: save your child or your people, honor your oath or save your love, preserve your soul or protect the innocent. Make readers desperate to know what THEY would choose. End mid-decision, with consequences about to unfold.
+
+            LANGUAGE REQUIREMENTS:
+            - Archaic flavor but modern clarity ("thou" sparingly, focus on powerful verbs)
+            - Each sentence must hit like a war hammer—short, brutal, unforgettable
+            - Rich sensory details: taste of blood, smell of burning temples, sound of breaking oaths
+            - Every word must earn its place or be cut without mercy
+
+            EMOTIONAL INVESTMENT REQUIREMENTS:
+            - Give the reader a clear identity and relationships they care about instantly
+            - Make every threat personal—to YOUR family, YOUR honor, YOUR sacred bonds
+            - Use specific, relatable motivations: protecting loved ones, keeping promises, seeking justice
+            - The reader should feel like they're living this nightmare, not just watching it
+
+            Output as pure JSON with no additional text:
+            {"parts":[
+            "Part 1 text that makes readers' hearts race...",
+            "Part 2 text that twists the knife...",
+            "Part 3 text that leaves them desperate for more..."
+            ]}
+        """
+    )
+    resp = openai_client.chat.completions.create(
+        model=model,
+        messages=[{"role": "user", "content": prompt}]
+    )
+    data = json.loads(resp.choices[0].message.content)
+    return data['parts']
+
+# 2) Utilities
+def probe_duration(path: Path) -> float:
     out = subprocess.check_output([
-        "ffprobe", "-v", "error",
-        "-show_entries", "format=duration",
-        "-of", "default=noprint_wrappers=1:nokey=1",
-        path
+        "ffprobe", "-v", "error", "-show_entries", "format=duration",
+        "-of", "default=noprint_wrappers=1:nokey=1", str(path)
     ])
     return float(out.strip())
 
 def fmt_ts(t: float) -> str:
-    h  = int(t // 3600)
-    m  = int((t % 3600) // 60)
-    s  = int(t % 60)
+    h, rem = divmod(int(t), 3600)
+    m, s = divmod(rem, 60)
     ms = int((t - int(t)) * 1000)
     return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
 
-# ─── 1) Generate 2–3 suspenseful story parts ───────────
-PROMPT_GEN = """Generate a tense, 2–3 part story, each part should be 20-30 seconds of speech, designed to hook the listener immediately and end each part on a cliffhanger. Return exactly one JSON object:
-{"parts": [string, …]}
+# 3) Process part: TTS, SRT, video creation
+def process_part(text: str, idx: int, base: str):
+    audio_file = AUDIO_SUBDIR / f"{base}_part{idx}.mp3"
+    srt_file = AUDIO_SUBDIR / f"{base}_part{idx}.srt"
+    video_file = VIDEO_SUBDIR / f"{base}_part{idx}.mp4"
 
-Each part must:
-- Be 100–150 words (≈40 sec when read aloud)
-- Select one genre: horror, psychological thriller, dark sci-fi, or mystery
-- Open with a gripping first sentence hook
-- Present an unsettling scenario or high-stakes dilemma
-- Raise provocative questions and hint at a shocking twist
-- End with a teasing indicator for the next part
-- The last part should end with a clear ending
-
-Example output:
-{"parts": [
-  "Part 1 text…",
-  "Part 2 text…",
-  "Part 3 text…"
-]}"""
-
-resp = openai_client.chat.completions.create(
-    model="gpt-4",  # Changed from gpt-4o-mini to gpt-4
-    messages=[{"role": "user", "content": PROMPT_GEN}]
-)
-data = json.loads(resp.choices[0].message.content.strip())
-parts = data["parts"]
-
-# ─── 2) Process each part: TTS, subtitle, video ────────
-base_name = uuid.uuid4().hex  # random prefix to avoid name conflicts
-background = random.choice(BACKGROUND_VIDEOS)
-
-for idx, story in enumerate(parts, start=1):
-    print(f"\n--- Part {idx} ---")
-    # file paths
-    audio_path   = os.path.join(AUDIO_SUBTITLES_DIR, f"{base_name}_part{idx}.mp3")
-    srt_path     = os.path.join(AUDIO_SUBTITLES_DIR, f"{base_name}_part{idx}.srt")
-    video_output = os.path.join(VIDEOS_DIR, f"{base_name}_part{idx}.mp4")
-
-    # 2a) Generate TTS
-    audio_stream = eleven_client.text_to_speech.convert(
-        text=story,
-        voice_id="21m00Tcm4TlvDq8ikWAM",  # replace with your voice ID
-        model_id="eleven_flash_v2_5",
-        output_format="mp3_44100_128"
-    )
-    with open(audio_path, "wb") as f:
-        for chunk in audio_stream:
+    # TTS
+    stream = eleven_client.text_to_speech.convert(text=text, voice_id="21m00Tcm4TlvDq8ikWAM", model_id="eleven_flash_v2_5", output_format="mp3_44100_128")
+    with open(audio_file, "wb") as f:
+        for chunk in stream:
             f.write(chunk)
-    print(f"  Saved audio → {audio_path}")
 
-    # 2b) Whisper transcription for precise timings
-    transcript = openai_client.audio.transcriptions.create(
-        file=open(audio_path, "rb"),
-        model="whisper-1",
-        response_format="verbose_json",
-        temperature=0
+    # WHISPER transcription
+    transcription = openai_client.audio.transcriptions.create(
+        file=open(audio_file, "rb"), model="whisper-1", response_format="verbose_json", temperature=0
     )
-    segments = transcript.segments
+    segments = transcription.segments
 
-    # 2c) Re-chunk to shorter subtitles
+    # Re-chunk
     new_segments = []
     for seg in segments:
-        words = seg.text.strip().split()
-        if not words:
-            continue
-        total_words = len(words)
-        group_count = (total_words + MAX_WORDS - 1) // MAX_WORDS
-        duration = (seg.end - seg.start) / group_count
+        words = seg.text.split()
+        if not words: continue
+        group_count = (len(words) + MAX_WORDS - 1) // MAX_WORDS
+        dur = (seg.end - seg.start) / group_count
         for i in range(group_count):
-            chunk = words[i*MAX_WORDS:(i+1)*MAX_WORDS]
-            start = seg.start + i * duration
-            end   = start + duration
-            new_segments.append({
-                "start": start,
-                "end":   end,
-                "text":  " ".join(chunk)
-            })
+            start = seg.start + i * dur
+            end = start + dur
+            chunk_txt = " ".join(words[i*MAX_WORDS:(i+1)*MAX_WORDS])
+            new_segments.append({"start": start, "end": end, "text": chunk_txt})
 
-    # 2d) Write SRT
-    with open(srt_path, "w", encoding="utf-8") as sf:
-        for i, seg in enumerate(new_segments, start=1):
-            sf.write(f"{i}\n")
-            sf.write(f"{fmt_ts(seg['start'])} --> {fmt_ts(seg['end'])}\n")
-            sf.write(seg['text'] + "\n\n")
-    print(f"  Wrote subtitles → {srt_path}")
+    # Write SRT
+    with open(srt_file, "w", encoding="utf-8") as sf:
+        for i, seg in enumerate(new_segments, 1):
+            sf.write(f"{i}\n{fmt_ts(seg['start'])} --> {fmt_ts(seg['end'])}\n{seg['text']}\n\n")
 
-    # 2e) Probe durations & pick random segment of background
-    total_dur = probe_duration(audio_path)
-    bg_dur    = probe_duration(background)
-    max_start = max(0, bg_dur - total_dur)
-    start_at  = random.uniform(0, max_start)
-    print(f"  Audio {total_dur:.1f}s, BG {bg_dur:.1f}s → start at {start_at:.1f}s")
-
-    # 2f) Build FFmpeg command
+    # Video render
+    audio_dur = probe_duration(audio_file)
+    bg = random.choice(BACKGROUND_VIDEOS)
+    bg_dur = probe_duration(bg)
+    start_at = random.uniform(0, max(0, bg_dur - audio_dur))
     filter_str = (
-        f"subtitles='{os.path.abspath(srt_path)}':"
-        f"force_style='FontName={FONT_NAME},FontSize={FONT_SIZE},"
-        f"PrimaryColour=&HFFFFFF&,MarginV={MARGIN_V}'"
+        f"subtitles='{srt_file}':force_style='FontName={FONT_NAME},"
+        f"FontSize={FONT_SIZE},PrimaryColour=&HFFFFFF&,MarginV={MARGIN_V}'"
     )
-    ffmpeg_cmd = [
-        "ffmpeg",
-        "-ss", str(start_at),
-        "-i", background,
-        "-i", audio_path,
-        "-t", str(total_dur),
-        "-map", "0:v",
-        "-map", "1:a",
-        "-c:v", "libx264",
-        "-c:a", "aac",
-        "-vf", filter_str,
-        video_output
-    ]
-    subprocess.run(ffmpeg_cmd, check=True)
-    print(f"  Output video → {video_output}")
+    cmd = ["ffmpeg", "-ss", str(start_at), "-i", bg, "-i", str(audio_file), "-t", str(audio_dur),
+           "-map", "0:v", "-map", "1:a", "-c:v", "libx264", "-c:a", "aac", "-vf", filter_str, str(video_file)]
+    subprocess.run(cmd, check=True)
+    return video_file
 
-# ─── 3) Generate upload metadata for TikTok, Instagram & YouTube Shorts ────
-metadata_prompt = f"""
-You are a social-media growth expert. For each of these video scripts (part 1 to part {len(parts)}), generate optimized metadata for TikTok, Instagram, and YouTube Shorts:
+# 4) Metadata generation
+def generate_metadata(parts: list):
+    prompt = f"""
+        You are a social-media growth expert. For each of these video scripts (part 1 to part {len(parts)}), generate optimized metadata for TikTok, Instagram, and YouTube Shorts:
 
-1. TikTok:
-   • caption (≤150 characters)
-   • 8–12 trending hashtags
+        1. TikTok:
+        • caption (≤150 characters)
+        • 5 trending hashtags
 
-2. Instagram:
-   • caption (≤2,200 characters, include a clear CTA)
-   • 15–20 hashtags
+        2. Instagram:
+        • caption (≤2,200 characters, include a clear CTA)
+        • 15–20 hashtags
 
-3. YouTube Shorts:
-   • title (≤60 characters, include "#Shorts")
-   • description (≤150 characters, include "#Shorts" & a CTA)
-   • 5–10 relevant tags (must include "#Shorts")
+        3. YouTube Shorts:
+        • title (≤60 characters, include "#Shorts")
+        • description (≤150 characters, include "#Shorts" & a CTA)
+        • 5–10 relevant tags (must include "#Shorts")
 
-Return exactly one JSON object with this structure:
+        Return exactly one JSON object with this structure:
 
-{{
-  "videos": [
-    {{
-      "part": 1,
-      "tiktok":    {{ "caption": "...", "hashtags": ["#…", …] }},
-      "instagram": {{ "caption": "...", "hashtags": ["#…", …] }},
-      "youtube_shorts": {{
-        "title": "...",
-        "description": "...",
-        "tags": ["…", …]
-      }}
-    }},
-    …
-  ]
-}}
+        {{
+        "videos": [
+            {{
+            "part": 1,
+            "tiktok":    {{ "caption": "...", "hashtags": ["#…", …] }},
+            "instagram": {{ "caption": "...", "hashtags": ["#…", …] }},
+            "youtube_shorts": {{
+                "title": "...",
+                "description": "...",
+                "tags": ["…", …]
+            }}
+            }},
+            …
+        ]
+        }}
 
-Here are the scripts:
-{json.dumps(parts, indent=2)}
-"""
+        Here are the scripts:
+        {json.dumps(parts, indent=2)}
+        """
+    resp = openai_client.chat.completions.create(model="gpt-4", messages=[{"role":"user","content":prompt}])
+    return json.loads(resp.choices[0].message.content)
 
-resp_meta = openai_client.chat.completions.create(
-    model="gpt-4",  
-    messages=[{"role": "user", "content": metadata_prompt}]
-)
-metadata = json.loads(resp_meta.choices[0].message.content)
+# Main orchestration
+def main():
+    # Ensure TikTok auth is ready
+    ensure_tiktok_auth()
+    start_auto_refresh_thread()
 
-# Save metadata for the automation pipeline
-meta_out = os.path.join(AUDIO_SUBTITLES_DIR, f"{base_name}_metadata.json")
-with open(meta_out, "w", encoding="utf-8") as mf:
-    json.dump(metadata, mf, ensure_ascii=False, indent=2)
-print(f"Saved upload metadata → {meta_out}")
+    parts = generate_story_parts()
+    print(parts)
+    base = uuid.uuid4().hex
+    video_paths = []
+    for idx, text in enumerate(parts, 1):
+        print(f"Processing part {idx}")
+        video_paths.append(process_part(text, idx, base))
+    
+    metadata = generate_metadata(parts)
+    meta_file = AUDIO_SUBDIR / f"{base}_metadata.json"
+    meta_file.write_text(json.dumps(metadata, ensure_ascii=False, indent=2))
+    print(f"Metadata saved to {meta_file}")
+
+    # Upload videos to platforms
+    for video_path in video_paths:
+        print(f"\nUploading {video_path.name}...")
+        try:
+            print("Uploading to YouTube Shorts...")
+            youtube_response = upload_youtube_short(str(video_path), str(meta_file))
+            print(f"YouTube upload complete! Video ID: {youtube_response['id']}")
+        except Exception as e:
+            print(f"YouTube upload failed: {e}")
+
+        try:
+            print("Uploading to TikTok...")
+            tiktok_response = upload_tiktok(str(video_path), str(meta_file))
+            print(f"TikTok upload complete! Status: {tiktok_response}")
+        except Exception as e:
+            print(f"TikTok upload failed: {e}")
+
+if __name__ == '__main__':
+    main()
+
+
