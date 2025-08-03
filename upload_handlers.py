@@ -43,45 +43,31 @@ def ensure_tiktok_auth():
             print("Refreshing TikTok access token...")
             refresh_access_token()
         else:
-            print(f"Opening browser for authentication: {LOGIN_URL}")
-            import selenium
-            from selenium import webdriver
-            from selenium.webdriver.common.by import By
-            from selenium.webdriver.support.ui import WebDriverWait
-            from selenium.webdriver.support import expected_conditions as EC
+            print(f"\nPlease complete TikTok authentication in your browser:")
+            print(f"1. Open this URL: {LOGIN_URL}")
+            print("2. Log in and authorize the application")
+            print("3. When you see 'Authentication Successful', copy the token data")
+            print("4. Paste the token data here and press Enter:")
             
-            # Open browser and wait for auth
-            driver = webdriver.Chrome()  # Make sure you have Chrome and chromedriver installed
+            token_data = input().strip()
             try:
-                driver.get(LOGIN_URL)
-                # Wait for successful auth (title will be set to TIKTOK_AUTH_SUCCESS)
-                WebDriverWait(driver, 300).until(
-                    EC.title_is("TIKTOK_AUTH_SUCCESS")
-                )
-                # Get tokens from the page
-                tokens_elem = driver.find_element(By.ID, "tokens")
-                try:
-                    tokens_data = json.loads(tokens_elem.get_attribute("textContent").strip())
-                    # Validate token data
-                    if not all(k in tokens_data for k in ['access_token', 'refresh_token', 'expires_at']):
-                        raise ValueError("Missing required token fields")
-                    
-                    # Save tokens
-                    access_token = tokens_data['access_token']
-                    refresh_token = tokens_data['refresh_token']
-                    expires_at = int(tokens_data['expires_at'])
-                    save_tokens()
-                    print("TikTok authentication complete.")
-                except json.JSONDecodeError:
-                    print("Error: Could not parse token data from page")
-                    print("Token content:", tokens_elem.get_attribute("textContent"))
-                    raise
-                except Exception as e:
-                    print(f"Error processing tokens: {e}")
-                    print("Token data:", tokens_data)
-                    raise
-            finally:
-                driver.quit()
+                tokens = json.loads(token_data)
+                # Validate token data
+                if not all(k in tokens for k in ['access_token', 'refresh_token', 'expires_at']):
+                    raise ValueError("Missing required token fields")
+                
+                # Save tokens
+                access_token = tokens['access_token']
+                refresh_token = tokens['refresh_token']
+                expires_at = int(tokens['expires_at'])
+                save_tokens()
+                print("TikTok authentication complete.")
+            except json.JSONDecodeError:
+                print("Error: Invalid JSON format. Please copy the entire token data exactly as shown.")
+                raise
+            except Exception as e:
+                print(f"Error processing tokens: {e}")
+                raise
 
 # ─── Auto-refresh thread ────────────────────────────────────────────────────────
 def save_tokens():
