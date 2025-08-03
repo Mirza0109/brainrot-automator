@@ -6,12 +6,12 @@ exports.handler = async () => {
   
     const authUrl = 
     `https://open.tiktokapis.com/v2/oauth/authorize/?` + 
-    `client_key=${CLIENT_KEY}` +
+    `client_key=${clientKey}` +
     `&response_type=code` +
-    `&scope=${scopes}` +
+    `&scope=video.upload%20user.info.basic` +
     `&redirect_uri=${redirectUri}` +
     `&state=${state}`;
-    
+
     return {
       statusCode: 302,
       headers: { Location: authUrl },
