@@ -1,0 +1,26 @@
+{
+  "dependencies": {
+    "dotenv": "^17.2.1",
+    "node-fetch": "^2.7.0"
+  },
+  "name": "ai-reel-gen",
+  "version": "1.0.0",
+  "description": "--- layout: default title: Project README ---",
+  "main": "index.js",
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Mirza0109/brainrot-automator.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/Mirza0109/brainrot-automator/issues"
+  },
+  "homepage": "https://github.com/Mirza0109/brainrot-automator#readme"
+}

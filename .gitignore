@@ -43,4 +43,7 @@ videos/
 *.json
 audio_and_subtitles/
 
+!package-lock.json
+!package.json
+
 _site/
