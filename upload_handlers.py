@@ -33,69 +33,86 @@ LOGIN_URL       = os.getenv('TIKTOK_LOGIN_URL', 'https://<your-site>/.netlify/fu
 # ─── Authentication Helper ─────────────────────────────────────────────────────
 def ensure_tiktok_auth():
     """
-    Ensure we have a valid TikTok access token: refresh if expired, otherwise trigger manual auth.
+    Ensure we have a valid TikTok access token: 
+    - If still unexpired, do nothing.
+    - Else if we have a refresh_token, rotate it.
+    - Otherwise kick off a manual login in the browser.
     """
     global access_token, refresh_token, expires_at
-    now = time.time()
-    # If no token or expired
-    if not access_token or now >= expires_at:
-        if refresh_token and CLIENT_KEY:
-            print("Refreshing TikTok access token...")
-            refresh_access_token()
-        else:
-            print(f"\nPlease complete TikTok authentication in your browser:")
-            print(f"1. Open this URL: {LOGIN_URL}")
-            print("2. Log in and authorize the application")
-            print("3. When you see 'Authentication Successful', copy the token data")
-            print("4. Paste the token data here and press Enter:")
-            
-            token_data = input().strip()
-            try:
-                tokens = json.loads(token_data)
-                # Validate token data
-                if not all(k in tokens for k in ['access_token', 'refresh_token', 'expires_at']):
-                    raise ValueError("Missing required token fields")
-                
-                # Save tokens
-                access_token = tokens['access_token']
-                refresh_token = tokens['refresh_token']
-                expires_at = int(tokens['expires_at'])
-                save_tokens()
-                print("TikTok authentication complete.")
-            except json.JSONDecodeError:
-                print("Error: Invalid JSON format. Please copy the entire token data exactly as shown.")
-                raise
-            except Exception as e:
-                print(f"Error processing tokens: {e}")
-                raise
 
-# ─── Auto-refresh thread ────────────────────────────────────────────────────────
+    now = time.time()
+    if access_token and now < expires_at:
+        return
+
+    if refresh_token and CLIENT_KEY:
+        print("🔄 Refreshing TikTok access token…")
+        refresh_access_token()
+        start_auto_refresher()  # make sure the background thread is running
+        return
+
+    # Manual flow:
+    print("\n🔐 TikTok manual authentication required:")
+    print(f"→ Opening your browser to: {LOGIN_URL}")
+    webbrowser.open(LOGIN_URL)
+    print("When you see your JSON token response, copy it and then press Enter here.")
+    input("Press Enter to paste token data (end with EOF)…\n")
+
+    # Read multi-line JSON from stdin until EOF
+    token_lines = []
+    try:
+        while True:
+            token_lines.append(input())
+    except EOFError:
+        pass
+
+    try:
+        tokens = json.loads("\n".join(token_lines))
+        for key in ("access_token", "refresh_token", "expires_at"):
+            if key not in tokens:
+                raise KeyError(f"Missing '{key}' in token data")
+        access_token  = tokens["access_token"]
+        refresh_token = tokens["refresh_token"]
+        expires_at    = int(tokens["expires_at"])
+        save_tokens()
+        print("✅ TikTok authentication complete!")
+        start_auto_refresher()
+    except Exception as e:
+        print(f"❌ Failed to process token data: {e}")
+        raise
+
+
+# ─── Token Persistence ──────────────────────────────────────────────────────────
 def save_tokens():
+    """Write current tokens + expiry out to disk."""
     TOKEN_STORE.write_text(json.dumps({
-        'access_token':  access_token,
-        'refresh_token': refresh_token,
-        'expires_at':    expires_at
+        "access_token":  access_token,
+        "refresh_token": refresh_token,
+        "expires_at":    expires_at
     }))
 
+
 def refresh_access_token():
+    """
+    Hit TikTok’s refresh endpoint to rotate both access & refresh tokens.
+    """
     global access_token, refresh_token, expires_at
     resp = requests.post(
         REFRESH_URL,
-        data={
-            'client_key':    CLIENT_KEY,
-            'refresh_token': refresh_token
-        },
-        headers={'Content-Type': 'application/x-www-form-urlencoded'}
+        data={ "client_key": CLIENT_KEY, "refresh_token": refresh_token },
+        headers={ "Content-Type": "application/x-www-form-urlencoded" }
     )
     resp.raise_for_status()
-    data = resp.json()['data']
-    access_token  = data['access_token']
-    refresh_token = data['refresh_token']
-    expires_at    = int(time.time()) + data['expires_in']
+    data = resp.json().get("data", {})
+    access_token  = data["access_token"]
+    refresh_token = data["refresh_token"]
+    expires_at    = int(time.time()) + data["expires_in"]
     save_tokens()
-    print(f"[TikTok] Token refreshed; expires at {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(expires_at))}")
+    print(f"[TikTok] Token refreshed; next expiry at {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(expires_at))}")
 
+
+# ─── Background Auto‐Refresh ────────────────────────────────────────────────────
 def _auto_refresher():
+    """Sleep until 60s before expiry, then refresh, looping forever."""
     while True:
         wait = expires_at - time.time() - 60
         if wait > 0:
@@ -103,13 +120,79 @@ def _auto_refresher():
         try:
             refresh_access_token()
         except Exception as e:
-            print(f"Failed to refresh TikTok token: {e}")
+            print(f"⚠️  Auto‐refresh failed: {e}")
             time.sleep(60)
 
-def start_auto_refresh_thread():
+
+def start_auto_refresher():
+    """Spawn the daemon thread if we have a refresh_token already."""
     if refresh_token and CLIENT_KEY:
         t = threading.Thread(target=_auto_refresher, daemon=True)
         t.start()
+
+
+# ─── TikTok Upload Function ────────────────────────────────────────────────────
+def upload_tiktok(video_path: str, json_path: str):
+    """
+    Upload a single video (partN.mp4) to TikTok using the direct‐post API.
+    """
+    ensure_tiktok_auth()
+
+    # 1) Determine which “part” we’re uploading
+    fname = os.path.basename(video_path)
+    m = re.search(r"part(\d+)", fname)
+    if not m:
+        raise ValueError(f"Cannot extract part number from '{fname}'")
+    part = int(m.group(1))
+
+    # 2) Load metadata (caption + hashtags)
+    with open(json_path) as f:
+        data = json.load(f)
+    entry = next((v for v in data.get("videos", []) if v.get("part") == part), None)
+    if not entry or "tiktok" not in entry:
+        raise KeyError(f"No TikTok metadata for part {part}")
+    tk = entry["tiktok"]
+    caption = tk.get("caption", "") + " " + " ".join(tk.get("hashtags", []))
+
+    # 3) INIT: get publish_id + upload_url
+    size = os.path.getsize(video_path)
+    init_url = f"{TIKTOK_API_BASE}/v2/post/publish/video/init/"
+    init_resp = requests.post(
+        init_url,
+        headers={ "Authorization": f"Bearer {access_token}", "Content-Type": "application/json" },
+        json={
+            "post_info":   { "title": caption, "privacy_level": "PUBLIC_TO_EVERYONE" },
+            "source_info": { "source": "FILE_UPLOAD", "video_size": size, "chunk_size": size, "total_chunk_count": 1 }
+        }
+    )
+    if init_resp.status_code != 200:
+        print(f"❌ TikTok init failed ({init_resp.status_code}): {init_resp.text}")
+        init_resp.raise_for_status()
+    init_data = init_resp.json()["data"]
+    publish_id, upload_url = init_data["publish_id"], init_data["upload_url"]
+
+    # 4) PUT: upload the MP4
+    with open(video_path, "rb") as fp:
+        chunk = fp.read()
+    put_resp = requests.put(
+        upload_url,
+        headers={ "Content-Type": "video/mp4", "Content-Range": f"bytes 0-{len(chunk)-1}/{len(chunk)}" },
+        data=chunk
+    )
+    if put_resp.status_code != 200:
+        print(f"❌ TikTok upload failed ({put_resp.status_code}): {put_resp.text}")
+        put_resp.raise_for_status()
+
+    # 5) POLL status
+    status_resp = requests.get(
+        f"{TIKTOK_API_BASE}/v2/post/publish/get_status/",
+        headers={ "Authorization": f"Bearer {access_token}" },
+        params={ "publish_id": publish_id }
+    )
+    status_resp.raise_for_status()
+    status = status_resp.json().get("data")
+    print(f"✅ TikTok publish status: {status}")
+    return status
 
 # ─── YouTube Shorts ────────────────────────────────────────────────────────────
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -146,7 +229,8 @@ def check_youtube_channel():
 
 def upload_youtube_short(video_path: str, json_path: str):
     fname = os.path.basename(video_path)
-    part = int(re.search(r'(\d+)', fname).group(1))
+    # Extract part number from filename like "uuid_part1.mp4"
+    part = int(re.search(r'part(\d+)', fname).group(1))
     with open(json_path) as f:
         data = json.load(f)
     entry = next((v for v in data['videos'] if v.get('part') == part), None)
@@ -170,39 +254,12 @@ def upload_youtube_short(video_path: str, json_path: str):
     return resp
 
 
-def upload_tiktok(video_path: str, json_path: str):
-    # Ensure we have a valid TikTok token
-    ensure_tiktok_auth()
-    part = int(re.search(r'(\d+)', os.path.basename(video_path)).group(1))
-    with open(json_path) as f:
-        data = json.load(f)
-    entry = next((v for v in data['videos'] if v.get('part') == part), None)
-    if not entry or 'tiktok' not in entry:
-        raise KeyError(f"No TikTok metadata for part {part}")
-    tk = entry['tiktok']
-    caption = tk['caption'] + ' ' + ' '.join(tk.get('hashtags', []))
-    size = os.path.getsize(video_path)
-    init = requests.post(f"{TIKTOK_API_BASE}/v2/post/publish/video/init/",
-                         headers={'Authorization': f'Bearer {access_token}', 'Content-Type': 'application/json'},
-                         json={'post_info': {'title': caption, 'privacy_level': 'PUBLIC_TO_EVERYONE'},
-                               'source_info': {'source': 'FILE_UPLOAD', 'video_size': size, 'chunk_size': size, 'total_chunk_count': 1}})
-    init.raise_for_status()
-    data = init.json()['data']
-    publish_id, upload_url = data['publish_id'], data['upload_url']
-    with open(video_path, 'rb') as fp:
-        chunk = fp.read()
-    put = requests.put(upload_url, headers={'Content-Type': 'video/mp4', 'Content-Range': f'bytes 0-{len(chunk)-1}/{len(chunk)}'}, data=chunk)
-    put.raise_for_status()
-    status = requests.get(f"{TIKTOK_API_BASE}/v2/post/publish/get_status/", headers={'Authorization': f'Bearer {access_token}'}, params={'publish_id': publish_id})
-    status.raise_for_status()
-    print(f"TikTok publish status: {status.json()['data']}")
-    return status.json()['data']
 
 
 if __name__ == '__main__':
     # Ensure authentication and start refresher
     ensure_tiktok_auth()
-    start_auto_refresh_thread()
+    start_auto_refresher()
 
     JSON = '/path/to/stories.json'
     VID  = '/path/to/video_part1.mp4'
