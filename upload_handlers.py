@@ -60,14 +60,26 @@ def ensure_tiktok_auth():
                 )
                 # Get tokens from the page
                 tokens_elem = driver.find_element(By.ID, "tokens")
-                tokens_data = json.loads(tokens_elem.get_attribute("textContent").strip())
-                
-                # Save tokens
-                access_token = tokens_data['access_token']
-                refresh_token = tokens_data['refresh_token']
-                expires_at = tokens_data['expires_at']
-                save_tokens()
-                print("TikTok authentication complete.")
+                try:
+                    tokens_data = json.loads(tokens_elem.get_attribute("textContent").strip())
+                    # Validate token data
+                    if not all(k in tokens_data for k in ['access_token', 'refresh_token', 'expires_at']):
+                        raise ValueError("Missing required token fields")
+                    
+                    # Save tokens
+                    access_token = tokens_data['access_token']
+                    refresh_token = tokens_data['refresh_token']
+                    expires_at = int(tokens_data['expires_at'])
+                    save_tokens()
+                    print("TikTok authentication complete.")
+                except json.JSONDecodeError:
+                    print("Error: Could not parse token data from page")
+                    print("Token content:", tokens_elem.get_attribute("textContent"))
+                    raise
+                except Exception as e:
+                    print(f"Error processing tokens: {e}")
+                    print("Token data:", tokens_data)
+                    raise
             finally:
                 driver.quit()
 

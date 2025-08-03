@@ -35,7 +35,10 @@ exports.handler = async (event) => {
   }
 
   const data = await tokenRes.json();
-  const expires_at = Math.floor(Date.now() / 1000) + data.data.expires_in;
+  console.log("Token response:", JSON.stringify(data, null, 2));
+
+  // TikTok v2 API returns tokens directly in the response, not nested under data
+  const expires_at = Math.floor(Date.now() / 1000) + data.expires_in;
 
   // Create HTML page that displays tokens in a format Python can parse
   const html = `
@@ -44,13 +47,17 @@ exports.handler = async (event) => {
     <body>
       <h2>Authentication Successful!</h2>
       <p>Your tokens are ready. The Python script will automatically save these.</p>
-      <div id="tokens" style="display:none">
-        ${JSON.stringify({
-          access_token: data.data.access_token,
-          refresh_token: data.data.refresh_token,
-          expires_at: expires_at,
-        })}
-      </div>
+      <pre id="tokens" style="display:none">
+        ${JSON.stringify(
+          {
+            access_token: data.access_token,
+            refresh_token: data.refresh_token,
+            expires_at: expires_at,
+          },
+          null,
+          2
+        )}
+      </pre>
       <script>
         // The Python script will look for this element
         document.title = 'TIKTOK_AUTH_SUCCESS';
