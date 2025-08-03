@@ -5,7 +5,7 @@ exports.handler = async () => {
     const state       = "secure-random-string"; // you can generate/store per session
   
     const authUrl = 
-    `https://open.tiktokapis.com/v2/oauth/authorize/?` + 
+    `https://open.tiktokapis.com/v2/oauth/authorize?` + 
     `client_key=${clientKey}` +
     `&response_type=code` +
     `&scope=video.upload%20user.info.basic` +
