@@ -42,3 +42,5 @@ videos/
 !/docs/tiktokBSDZqD4bSmwkvLJNzloyfcFALLh9SWuO.txt
 *.json
 audio_and_subtitles/
+
+_site/
