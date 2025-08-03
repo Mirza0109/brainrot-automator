@@ -2,13 +2,13 @@
 exports.handler = async () => {
   const clientKey = process.env.TIKTOK_CLIENT_KEY;
   const redirectUri = encodeURIComponent(process.env.TIKTOK_REDIRECT_URI);
-  const state = "secure-random-string"; // you can generate/store per session
+  const state = Math.random().toString(36).substring(2); // you can generate/store per session
 
   const authUrl =
-    `https://www.tiktok.com/v2/oauth/authorize?` +
+    `https://www.tiktok.com/v2/auth/authorize/?` +
     `client_key=${clientKey}` +
     `&response_type=code` +
-    `&scope=video.upload%20user.info.basic` +
+    `&scope=user.info.basic` +
     `&redirect_uri=${redirectUri}` +
     `&state=${state}`;
 
