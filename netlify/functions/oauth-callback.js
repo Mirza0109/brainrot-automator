@@ -5,12 +5,18 @@ exports.handler = async (event) => {
   const params = new URLSearchParams(event.queryStringParameters);
   const code   = params.get("code");
   const state  = params.get("state");
+  const csrfState = event.cookies.get("csrfState");
+
+  if (csrfState !== state) {
+    return { statusCode: 400, body: "Invalid CSRF state" };
+  }
+
   if (!code) {
     return { statusCode: 400, body: "Missing code" };
   }
 
   // Exchange code for token
-  const tokenRes = await fetch("https://open.tiktokapis.com/v2/oauth/token/", {
+  const tokenRes = await fetch("https://www.tiktok.com/v2/auth/token/", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
