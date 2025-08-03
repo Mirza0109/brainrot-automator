@@ -48,6 +48,10 @@ This end-to-end pipeline enables you to go from idea to published content with a
 
   ```bash
   pip install openai python-dotenv elevenlabs requests google-auth-oauthlib google-api-python-client whisper
+
+  cd netlify/functions
+  npm init -y
+  npm install node-fetch@2 dotenv
   ```
 * **Environment variables** in a `.env` file or exported:
 
