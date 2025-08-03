@@ -3,6 +3,7 @@ exports.handler = async () => {
   const clientKey = process.env.TIKTOK_CLIENT_KEY;
   const redirectUri = encodeURIComponent(process.env.TIKTOK_REDIRECT_URI);
   const state = Math.random().toString(36).substring(2); // you can generate/store per session
+  res.cookie('csrfState', state, { maxAge: 60000 });
 
   const authUrl =
     `https://www.tiktok.com/v2/auth/authorize/?` +
