@@ -3,11 +3,17 @@ const fetch = require("node-fetch");
 
 exports.handler = async (event) => {
   const params = new URLSearchParams(event.queryStringParameters);
-  const code   = params.get("code");
-  const state  = params.get("state");
-  const csrfState = event.cookies.get("csrfState");
+  const code = params.get("code");
+  const state = params.get("state");
 
-  if (csrfState !== state) {
+  // Get CSRF state from cookie
+  const cookieHeader = event.headers.cookie || "";
+  const csrfState = cookieHeader
+    .split(";")
+    .find((cookie) => cookie.trim().startsWith("csrfState="))
+    ?.split("=")[1];
+
+  if (!csrfState || csrfState !== state) {
     return { statusCode: 400, body: "Invalid CSRF state" };
   }
 
@@ -20,11 +26,11 @@ exports.handler = async (event) => {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
-      client_key:    process.env.TIKTOK_CLIENT_KEY,
+      client_key: process.env.TIKTOK_CLIENT_KEY,
       client_secret: process.env.TIKTOK_CLIENT_SECRET,
       code,
-      grant_type:    "authorization_code",
-      redirect_uri:  process.env.TIKTOK_REDIRECT_URI,
+      grant_type: "authorization_code",
+      redirect_uri: process.env.TIKTOK_REDIRECT_URI,
     }),
   });
   const data = await tokenRes.json();
@@ -33,8 +39,12 @@ exports.handler = async (event) => {
 
   return {
     statusCode: 200,
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      // Clear the CSRF cookie since we're done with it
+      "Set-Cookie":
+        "csrfState=; Max-Age=0; Path=/; HttpOnly; Secure; SameSite=Lax",
+    },
     body: JSON.stringify({ success: true, data }),
   };
 };
-
